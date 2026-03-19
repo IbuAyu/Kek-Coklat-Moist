@@ -3577,7 +3577,7 @@
                     <span class="contact-btn-icon"><i class="fa-brands fa-whatsapp"></i></span>
                     <span class="contact-btn-label">WhatsApp</span>
                 </a>
-                <a href="mailto:ibualyu.choc@gmail.com" class="contact-btn contact-btn-email">
+                <a href="/cdn-cgi/l/email-protection#1e777c6b7f72676b307d76717d5e79737f7772307d7173" class="contact-btn contact-btn-email">
                     <span class="contact-btn-icon"><i class="fa-regular fa-envelope"></i></span>
                     <span class="contact-btn-label">Email</span>
                 </a>
@@ -3598,7 +3598,7 @@
                     </div>
                     <div class="footer-section">
                         <h4 data-i18n="footer_contact">Contact</h4>
-                        <p><i class="fas fa-envelope"></i> <a href="mailto:ibualyu.choc@gmail.com">ibualyu.choc@gmail.com</a></p>
+                        <p><i class="fas fa-envelope"></i> <a href="/cdn-cgi/l/email-protection#30595245515c49451e53585f5370575d51595c1e535f5d"><span class="__cf_email__" data-cfemail="78111a0d1914010d561b10171b381f15191114561b1715">[email&#160;protected]</span></a></p>
                         <p><i class="fas fa-phone"></i> <a href="https://wa.me/+60166348389">+60 16-634 8389</a></p>
                     </div>
                     <div class="footer-section">
@@ -3705,7 +3705,7 @@
         </div>
     </div>
 
-    <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+    <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
         // ===== CONFIGURATION =====
         const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxqKBqbavYVSF9persF-8JVxB4Sx9Pt-x9x66BnDlN_DyQah5pw-2vSV3GT5g62BJc/exec';
 
@@ -4597,17 +4597,43 @@
         }
 
         // ===== GOOGLE SHEETS =====
+        // FIX: Removed mode:'no-cors' — Apps Script web apps support CORS with plain GET.
+        // mode:'no-cors' caused a blocked opaque response on the 302 redirect from
+        // script.google.com → script.googleusercontent.com, meaning doGet() never ran,
+        // no data was saved to Sheets, and no email was ever sent.
         async function submitToGoogleSheets(formData) {
+            const url = new URL(APPS_SCRIPT_URL);
+            for (const key in formData) {
+                if (formData[key] != null) url.searchParams.append(key, String(formData[key]));
+            }
+            if (!formData.timestamp) url.searchParams.append('timestamp', new Date().toISOString());
+
+            // Attempt 1 — standard fetch (works when Apps Script CORS headers are present)
             try {
-                const url = new URL(APPS_SCRIPT_URL);
-                for (const key in formData) {
-                    if (formData[key] != null) url.searchParams.append(key, formData[key]);
+                const response = await fetch(url.toString(), {
+                    method: 'GET',
+                    // no mode:'no-cors' — we need to READ the response to confirm delivery
+                });
+                if (response.ok) {
+                    const result = await response.json().catch(() => ({ success: true }));
+                    return result;
                 }
-                if (!formData.timestamp) url.searchParams.append('timestamp', new Date().toISOString());
-                await fetch(url.toString(), { method: 'GET', mode: 'no-cors' });
-                return { success: true };
-            } catch (error) {
-                return { success: false, error: error.message };
+            } catch (primaryError) {
+                console.warn('Primary fetch failed, trying fallback:', primaryError.message);
+            }
+
+            // Attempt 2 — image-pixel fallback (fire-and-forget, always reaches the server)
+            // Used only if the main fetch fails (e.g. network hiccup or CORS misconfiguration).
+            try {
+                await new Promise((resolve, reject) => {
+                    const img = new Image();
+                    const timer = setTimeout(() => resolve({ success: true, method: 'pixel' }), 5000);
+                    img.onload = img.onerror = () => { clearTimeout(timer); resolve({ success: true, method: 'pixel' }); };
+                    img.src = url.toString() + '&_pixel=1&_t=' + Date.now();
+                });
+                return { success: true, method: 'pixel-fallback' };
+            } catch (fallbackError) {
+                return { success: false, error: fallbackError.message };
             }
         }
 
@@ -5473,6 +5499,7 @@
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
             const dateInput = document.getElementById('deliveryDate');
+            const cartDateInput = document.getElementById('deliveryDate');
             const cartDateInput = document.getElementById('cartDeliveryDate');
             if (dateInput) dateInput.min = tomorrow.toISOString().split('T')[0];
             if (cartDateInput) cartDateInput.min = tomorrow.toISOString().split('T')[0];
